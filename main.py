@@ -17,7 +17,7 @@ dp = Dispatcher()
 SERGEY_ID = 7847573270
 GELYA_ID = 6249773677
 
-# Твой полный словарь команд
+# Полный словарь твоих команд
 RP_ACTIONS = {
     "поцеловать": ("💋", "хочет нежно поцеловать", "нежно поцеловал", "нежно поцеловала", "Гелю", "Серёжу"),
     "обнять": ("🤗", "хочет крепко обнять", "крепко обнял", "уютно обняла", "Гелю", "Серёжу"),
@@ -60,17 +60,18 @@ async def callback_handler(call: types.CallbackQuery):
     
     if choice == "ai":
         await call.answer("Думаю...", show_alert=False)
-        prompt = f"Напиши короткое и милое ролевое действие для пары: {action}. Отправитель: {sender_id == SERGEY_ID and 'Серёжа' or 'Геля'}. Используй падежи."
+        prompt = f"Напиши очень короткое и милое ролевое действие (до 300 символов) для: {action}. Отправитель: {'Серёжа' if sender_id == SERGEY_ID else 'Геля'}. Используй падежи."
         loop = asyncio.get_running_loop()
         try:
             response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
-            new_text = f"✨ {response.text}"
+            text = response.text[:4000]
+            new_text = f"✨ {text}"
             if call.inline_message_id:
                 await bot.edit_message_text(inline_message_id=call.inline_message_id, text=new_text, parse_mode="HTML")
             else:
                 await call.message.edit_text(text=new_text, parse_mode="HTML")
         except Exception as e:
-            await call.answer(f"Ошибка: {e}", show_alert=True)
+            await call.answer("Не удалось сгенерировать текст.", show_alert=True)
         return
 
     is_sender_s = (int(sender_id) == SERGEY_ID)
