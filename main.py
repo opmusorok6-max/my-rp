@@ -1,36 +1,48 @@
-import asyncio
 import os
-import hashlib
-import google.generativeai as genai
+import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+from google import genai
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-pro')
+# Настройка
+logging.basicConfig(level=logging.INFO)
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Теперь бот сам узнает имена
+# Твои 12 RP команд (ничего не вырезано)
+RP_ACTIONS = {
+    "поцеловать": ("💋", "нежно поцеловал", "нежно поцеловала"),
+    "обнять": ("🤗", "крепко обнял", "уютно обняла"),
+    "укусить": ("👀", "слегка укусил", "мило укусила"),
+    "трахнуть": ("🔥", "страстно занялся любовью с", "нежно занялась любовью с"),
+    "шлепнуть": ("🍑", "игриво шлёпнул", "игриво шлёпнула"),
+    "цветочек": ("🌹", "подарил цветочек", "подарила цветочек"),
+    "успокоить": ("🧸", "крепко обнял и успокоил", "нежно обняла и успокоила"),
+    "пожалеть": ("🥺", "прижал к груди и пожалел", "нежно погладила и пожалела"),
+    "погладить": ("💆‍♂️", "ласково погладил", "нежно погладила"),
+    "массаж": ("💆‍♀️", "сделал расслабляющий массаж", "сделала нежный массаж"),
+    "кофе": ("☕", "принёс ароматный кофе", "приготовила самый вкусный кофе"),
+    "плед": ("🛏️", "заботливо укрыл", "заботливо укрыла"),
+}
+
 @dp.inline_query()
 async def inline_rp_handler(inline_query: types.InlineQuery):
-    sender_name = inline_query.from_user.first_name
+    sender = inline_query.from_user.first_name
     results = []
-    
-    # В инлайне мы не знаем получателя до момента клика, 
-    # поэтому пишем просто действие
     for act, data in RP_ACTIONS.items():
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(text="✅", callback_data=f"y:{act}:{inline_query.from_user.id}"),
-                    types.InlineKeyboardButton(text="❌", callback_data=f"n:{act}:{inline_query.from_user.id}"),
                     types.InlineKeyboardButton(text="✨ ИИ", callback_data=f"ai:{act}:{inline_query.from_user.id}"))
-        
         results.append(types.InlineQueryResultArticle(
-            id=hashlib.md5(f"{act}{inline_query.from_user.id}".encode()).hexdigest(),
+            id=str(hash(act + str(inline_query.from_user.id))),
             title=f"{data[0]} {act.capitalize()}",
-            input_message_content=types.InputTextMessageContent(message_text=f"{data[0]} <b>{sender_name}</b> хочет '{act}'!"),
+            input_message_content=types.InputTextMessageContent(message_text=f"{data[0]} <b>{sender}</b> хочет '{act}'!"),
             reply_markup=builder.as_markup()
         ))
     await inline_query.answer(results, cache_time=1, is_personal=True)
@@ -38,48 +50,37 @@ async def inline_rp_handler(inline_query: types.InlineQuery):
 @dp.callback_query()
 async def callback_handler(call: types.CallbackQuery):
     parts = call.data.split(":")
-    choice, action, sender_id = parts[0], parts[1], int(parts[2])
-    
-    # Имя отправителя берем из нажатия кнопки
-    sender_name = call.from_user.first_name
+    choice, action, sender_id = parts[0], parts[1], parts[2]
+    sender = call.from_user.first_name
     
     if choice == "ai":
-        # Используем show_alert=True, чтобы точно увидеть, если что-то пошло не так
-        await call.answer("Генерирую текст...", show_alert=False)
-        
-        loop = asyncio.get_running_loop()
+        await call.answer("Генерирую...", show_alert=False)
         try:
-            # Промпт теперь более свободный, так как мы не знаем второе имя
-            prompt = f"Напиши короткое милое действие: {sender_name} делает '{action}'. Добавь романтики."
-            response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
-            text = f"✨ {response.text[:1000]}"
-            
-            if call.inline_message_id:
-                await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
+            response = client.models.generate_content(
+                model="gemini-1.5-flash", 
+                contents=f"Напиши короткое и милое действие: {sender} {action}. Имя получателя в винительном падеже. Используй романтику."
+            )
+            await bot.edit_message_text(inline_message_id=call.inline_message_id, text=f"✨ {response.text[:1000]}", parse_mode="HTML")
         except Exception as e:
-            await call.answer(f"Ошибка ИИ: {str(e)[:50]}", show_alert=True)
+            await call.answer("Ошибка ИИ", show_alert=True)
         return
 
-    # Обработка обычных кнопок
+    # Логика команд
     data = RP_ACTIONS[action]
-    if choice == "y":
-        text = f"{data[0]} <b>{sender_name}</b> выбрал(а) '{action}'! 🥰"
-    else:
-        text = f"💔 <b>{sender_name}</b> хотел(а) '{action}', но что-то пошло не так."
+    # Используем простую логику: просто подтверждение действия
+    text = f"{data[0]} <b>{sender}</b> выбрал(а) '{action}'! 🥰"
+    await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
 
-    if call.inline_message_id:
-        await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
+async def on_startup(bot: Bot):
+    await bot.set_webhook(WEBHOOK_URL)
 
-# Словарь RP (оставь как был)
-RP_ACTIONS = {
-    "поцеловать": ("💋",), "обнять": ("🤗",), "укусить": ("👀",),
-    "трахнуть": ("🔥",), "шлепнуть": ("🍑",), "цветочек": ("🌹",),
-    "успокоить": ("🧸",), "пожалеть": ("🥺",), "погладить": ("💆‍♂️",),
-    "массаж": ("💆‍♀️",), "кофе": ("☕",), "плед": ("🛏️",)
-}
-
-async def main():
-    await dp.start_polling(bot)
+def main():
+    dp.startup.register(on_startup)
+    app = web.Application()
+    webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    webhook_requests_handler.register(app, path="/webhook")
+    setup_application(app, dp, bot=bot)
+    web.run_app(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
