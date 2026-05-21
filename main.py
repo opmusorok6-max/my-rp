@@ -8,7 +8,7 @@ from aiohttp import web
 
 # Настройка Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=BOT_TOKEN)
@@ -17,7 +17,7 @@ dp = Dispatcher()
 SERGEY_ID = 7847573270
 GELYA_ID = 6249773677
 
-# Твой полный словарь
+# Твой полный словарь команд
 RP_ACTIONS = {
     "поцеловать": ("💋", "хочет нежно поцеловать", "нежно поцеловал", "нежно поцеловала", "Гелю", "Серёжу"),
     "обнять": ("🤗", "хочет крепко обнять", "крепко обнял", "уютно обняла", "Гелю", "Серёжу"),
@@ -59,10 +59,14 @@ async def callback_handler(call: types.CallbackQuery):
     choice, action, sender_id = parts[0], parts[1], int(parts[2])
     
     if choice == "ai":
-        await call.answer("Генерирую...", show_alert=False)
-        prompt = f"Напиши короткое и милое ролевое описание для: {action}. Отправитель {sender_id == SERGEY_ID and 'Серёжа' or 'Геля'}. Используй падежи правильно."
-        response = model.generate_content(prompt)
-        await call.message.edit_text(text=f"✨ {response.text}", parse_mode="HTML")
+        await call.answer("Думаю...", show_alert=False)
+        prompt = f"Напиши короткое и милое ролевое действие для пары: {action}. Отправитель {sender_id == SERGEY_ID and 'Серёжа' or 'Геля'}. Используй падежи."
+        loop = asyncio.get_running_loop()
+        try:
+            response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
+            await call.message.edit_text(text=f"✨ {response.text}", parse_mode="HTML")
+        except Exception as e:
+            await call.message.edit_text(text=f"Ошибка ИИ: {e}")
         return
 
     is_sender_s = (int(sender_id) == SERGEY_ID)
@@ -72,15 +76,15 @@ async def callback_handler(call: types.CallbackQuery):
     text = f"{data[0]} <b>{('Серёжа' if is_sender_s else 'Геля')}</b> {data[2] if is_sender_s else data[3]} <b>{target}</b>! 🥰" if choice == "y" else "💔 Действие отклонено."
     await call.message.edit_text(text=text, parse_mode="HTML")
 
-async def web_server(request):
-    return web.Response(text="Бот онлайн")
-
 async def main():
+    # Заглушка сервера для Render (чтобы не было ошибки портов)
     app = web.Application()
-    app.router.add_get("/", web_server)
+    app.router.add_get("/", lambda r: web.Response(text="Бот онлайн"))
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', 10000).start()
+    
+    # Запуск бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
