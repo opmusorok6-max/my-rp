@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8639305108:AAHT4mGArX4H_8FaCQdcXJ0YbBu-ZRDtMU4")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
