@@ -6,7 +6,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 
-# Настройка Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-pro')
 
@@ -17,7 +16,6 @@ dp = Dispatcher()
 SERGEY_ID = 7847573270
 GELYA_ID = 6249773677
 
-# Словарь: смайл, фраза для Серёжи, фраза для Гели
 RP_ACTIONS = {
     "поцеловать": ("💋", "нежно поцеловал", "нежно поцеловала"),
     "обнять": ("🤗", "крепко обнял", "уютно обняла"),
@@ -38,7 +36,6 @@ async def inline_rp_handler(inline_query: types.InlineQuery):
     user_id = inline_query.from_user.id
     sender = "Серёжа" if user_id == SERGEY_ID else "Геля"
     target = "Гелю" if user_id == SERGEY_ID else "Серёжу"
-    
     results = []
     for act, data in RP_ACTIONS.items():
         builder = InlineKeyboardBuilder()
@@ -58,16 +55,15 @@ async def inline_rp_handler(inline_query: types.InlineQuery):
 async def callback_handler(call: types.CallbackQuery):
     parts = call.data.split(":")
     choice, action, sender_id = parts[0], parts[1], int(parts[2])
-    
     is_sender_s = (int(sender_id) == SERGEY_ID)
     sender_name = "Серёжа" if is_sender_s else "Геля"
     target_name = "Гелю" if is_sender_s else "Серёжу"
     
     if choice == "ai":
         await call.answer("Генерирую...", show_alert=False)
-        prompt = f"Напиши короткое и милое ролевое действие: {sender_name} {action} {target_name}. Соблюдай падежи."
         loop = asyncio.get_running_loop()
         try:
+            prompt = f"Напиши короткое действие: {sender_name} {action} {target_name}. Имя получателя в винительном падеже."
             response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
             text = f"✨ {response.text[:1000]}"
             if call.inline_message_id:
@@ -80,11 +76,10 @@ async def callback_handler(call: types.CallbackQuery):
 
     data = RP_ACTIONS[action]
     action_text = data[1] if is_sender_s else data[2]
-    
     text = f"{data[0]} <b>{sender_name}</b> {action_text} <b>{target_name}</b>! 🥰" if choice == "y" else f"💔 <b>{sender_name}</b> хотел(а) '{action}', но {target_name} отказался(ась)."
     
     if call.inline_message_id:
-        await bot.edit_message_id(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
+        await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
     else:
         await call.message.edit_text(text=text, parse_mode="HTML")
 
