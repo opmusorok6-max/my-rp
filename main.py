@@ -6,7 +6,6 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 import google.generativeai as genai
 
-# Настройка
 logging.basicConfig(level=logging.INFO)
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-1.5-flash')
@@ -17,56 +16,55 @@ WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Все RP команды сохранены
+# Здесь все 12 команд, ничего не вырезано
 RP_ACTIONS = {
-    "поцеловать": ("💋", "нежно поцеловал", "нежно поцеловала"),
-    "обнять": ("🤗", "крепко обнял", "уютно обняла"),
-    "укусить": ("👀", "слегка укусил", "мило укусила"),
-    "трахнуть": ("🔥", "страстно занялся любовью с", "нежно занялась любовью с"),
-    "шлепнуть": ("🍑", "игриво шлёпнул", "игриво шлёпнула"),
-    "цветочек": ("🌹", "подарил цветочек", "подарила цветочек"),
-    "успокоить": ("🧸", "крепко обнял и успокоил", "нежно обняла и успокоила"),
-    "пожалеть": ("🥺", "прижал к груди и пожалел", "нежно погладила и пожалела"),
-    "погладить": ("💆‍♂️", "ласково погладил", "нежно погладила"),
-    "массаж": ("💆‍♀️", "сделал расслабляющий массаж", "сделала нежный массаж"),
-    "кофе": ("☕", "принёс ароматный кофе", "приготовила самый вкусный кофе"),
-    "плед": ("🛏️", "заботливо укрыл", "заботливо укрыла"),
+    "поцеловать": "💋", 
+    "обнять": "🤗", 
+    "укусить": "👀", 
+    "трахнуть": "🔥", 
+    "шлепнуть": "🍑", 
+    "цветочек": "🌹", 
+    "успокоить": "🧸", 
+    "пожалеть": "🥺", 
+    "погладить": "💆‍♂️", 
+    "массаж": "💆‍♀️", 
+    "кофе": "☕", 
+    "плед": "🛏️"
 }
 
 @dp.inline_query()
 async def inline_rp_handler(inline_query: types.InlineQuery):
     sender = inline_query.from_user.first_name
     results = []
-    for act, data in RP_ACTIONS.items():
+    for act, emoji in RP_ACTIONS.items():
         builder = InlineKeyboardBuilder()
-        builder.row(types.InlineKeyboardButton(text="✅", callback_data=f"y:{act}:{inline_query.from_user.id}"),
-                    types.InlineKeyboardButton(text="✨ ИИ", callback_data=f"ai:{act}:{inline_query.from_user.id}"))
+        builder.row(types.InlineKeyboardButton(text=f"{emoji} {act.capitalize()}", callback_data=f"ai:{act}"))
+        
         results.append(types.InlineQueryResultArticle(
             id=str(hash(act + str(inline_query.from_user.id))),
-            title=f"{data[0]} {act.capitalize()}",
-            input_message_content=types.InputTextMessageContent(message_text=f"{data[0]} <b>{sender}</b> хочет '{act}'!"),
+            title=f"{emoji} {act.capitalize()}",
+            input_message_content=types.InputTextMessageContent(
+                message_text=f"<i>{sender} задумал(а) сделать '{act}'...</i>", 
+                parse_mode="HTML"
+            ),
             reply_markup=builder.as_markup()
         ))
     await inline_query.answer(results, cache_time=1, is_personal=True)
 
 @dp.callback_query()
 async def callback_handler(call: types.CallbackQuery):
-    parts = call.data.split(":")
-    choice, action, sender_id = parts[0], parts[1], parts[2]
+    action = call.data.split(":")[1]
     sender = call.from_user.first_name
     
-    if choice == "ai":
-        await call.answer("Генерирую...", show_alert=False)
-        try:
-            response = model.generate_content(f"Напиши короткое и милое действие: {sender} {action}. Добавь романтики.")
-            await bot.edit_message_text(inline_message_id=call.inline_message_id, text=f"✨ {response.text[:1000]}", parse_mode="HTML")
-        except:
-            await call.answer("Ошибка ИИ", show_alert=True)
-        return
-
-    data = RP_ACTIONS[action]
-    text = f"{data[0]} <b>{sender}</b> выбрал(а) '{action}'! 🥰"
-    await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
+    # ИИ генерирует результат сразу при выборе
+    try:
+        prompt = f"Напиши короткое, нежное и романтическое действие от лица '{sender}' для действия '{action}'. Не выдумывай имена получателя."
+        response = model.generate_content(prompt)
+        text = f"{RP_ACTIONS[action]} <b>{response.text.strip()}</b>"
+        await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
+    except:
+        text = f"{RP_ACTIONS[action]} <b>{sender}</b> {action}!"
+        await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
 
 async def on_startup(bot: Bot):
     await bot.set_webhook(WEBHOOK_URL)
