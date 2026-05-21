@@ -4,18 +4,20 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
-from google import genai
+import google.generativeai as genai
 
 # Настройка
 logging.basicConfig(level=logging.INFO)
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Твои 12 RP команд (ничего не вырезано)
+# Все RP команды сохранены
 RP_ACTIONS = {
     "поцеловать": ("💋", "нежно поцеловал", "нежно поцеловала"),
     "обнять": ("🤗", "крепко обнял", "уютно обняла"),
@@ -56,18 +58,13 @@ async def callback_handler(call: types.CallbackQuery):
     if choice == "ai":
         await call.answer("Генерирую...", show_alert=False)
         try:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash", 
-                contents=f"Напиши короткое и милое действие: {sender} {action}. Имя получателя в винительном падеже. Используй романтику."
-            )
+            response = model.generate_content(f"Напиши короткое и милое действие: {sender} {action}. Добавь романтики.")
             await bot.edit_message_text(inline_message_id=call.inline_message_id, text=f"✨ {response.text[:1000]}", parse_mode="HTML")
-        except Exception as e:
+        except:
             await call.answer("Ошибка ИИ", show_alert=True)
         return
 
-    # Логика команд
     data = RP_ACTIONS[action]
-    # Используем простую логику: просто подтверждение действия
     text = f"{data[0]} <b>{sender}</b> выбрал(а) '{action}'! 🥰"
     await bot.edit_message_text(inline_message_id=call.inline_message_id, text=text, parse_mode="HTML")
 
